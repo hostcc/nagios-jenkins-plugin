@@ -2,7 +2,7 @@
 use strict;
 use LWP::UserAgent;
 use JSON;
-use DateTime;
+use POSIX(); # for difftime(), don't import anything
 use URI::Escape;
 
 #
@@ -189,11 +189,8 @@ if( $numFailedBuilds > 0 ) {
       my $json3 = new JSON;
       my $obj3 = $json3->decode( $res3->content );
       $buildTimeStamp = $obj3->{timestamp} / 1000;
-            
-      my $dt = DateTime->from_epoch( epoch => $currenttime );
-      my $bts = DateTime->from_epoch( epoch => $buildTimeStamp );
-      my $tdiff = $bts->delta_ms($dt);
-      my $tsec = ($tdiff->in_units('minutes') * 60) + $tdiff->in_units('seconds');
+
+      my $tsec = POSIX::difftime ($currenttime, $buildTimeStamp);
       if( $currentlyBuilding eq 'false' ) {
  
         if( int($lsbThresholdCrit) <= int($tsec) && int($lsbThresholdCrit) != "0" ) {

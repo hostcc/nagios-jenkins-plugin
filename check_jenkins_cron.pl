@@ -11,7 +11,7 @@
 use strict;
 use LWP;
 use JSON; # deb: libjson-perl
-use DateTime; # deb: libdatetime-perl
+use POSIX(); # for difftime(), don't import anything
 use URI::Escape;
 use Getopt::Std;
 
@@ -164,16 +164,20 @@ sub main {
     
 } # end sub main
 
-# Calculate duration between unix epoch and now, using two methods to get the
+# Calculate duration between unix epoch and now, using simplistic method to get the
 # absolulte number of seconds between, and the human readable format.
 sub calcdur($) {
     my $epoch = shift;
-    my $timethen = DateTime->from_epoch( epoch => $epoch );
-    my $timenow = DateTime->now;
-    my $absdur = $timenow->subtract_datetime_absolute($timethen);
-    my $dur = $timenow - $timethen;
+
+    my $timethen = $epoch;
+    my $timenow = time();
+    # Treat negative time difference as absolute value. When comparing such
+    # result with a threshold later on, we would probably get the job as
+    # outdated and report ERROR
+    my $dur = POSIX::difftime($timenow, $timethen);
+	my $absdur = abs ($dur);
     my $humandur = humanduration($dur);
-    return ($absdur->seconds, $humandur);
+    return ($dur, $humandur);
 }
 
 # Perform Jenkins JSON API request for $_ API call (lastBuild/lastStableBuild/lastSuccessfulBuild/lastFailedBuild etc)
@@ -208,38 +212,63 @@ sub apireq($) {
     }
 }
 
-# Produce a string like '2w 4d 7h 0m 12s' for the given DateTime::Duration object.
+# Produce a string like '2w 4d 7h 0m 12s' for the given duration in seconds.
+# Redone without using DateTime to have no dependencies on it.
 # Removes unneccessary units (e.g. won't display 0y 0mo when there are no years/months in the duration).
-# NIH because DateTime::Format::Human::Duration won't compile, and there isn't a debian package for it.
 sub humanduration($) {
     my $dur = shift;
     my $res = "";
     my $zeroc = 0;
-    if ($dur->years > 0 ) {
-        $res .= sprintf "%dy ", $dur->years;
+    my $multiplier;
+    my $remainder;
+
+    $remainder = $dur;
+    # Years
+    $multiplier = 365 * 24 * 60 * 60;
+    my $years   = int ($remainder / $multiplier); $remainder %= $multiplier;
+    # Months
+    $multiplier = 30 * 24 * 60 * 60;
+    my $months  = int ($remainder / $multiplier); $remainder %= $multiplier;
+    # Weeks
+    $multiplier = 7 * 24 * 60 * 60;
+    my $weeks   = int ($remainder / $multiplier); $remainder %= $multiplier;
+    # Days
+    $multiplier = 24 * 60 * 60;
+    my $days    = int ($remainder / $multiplier); $remainder %= $multiplier;
+    # Hours
+    $multiplier = 60 * 60;
+    my $hours   = int ($remainder / $multiplier); $remainder %= $multiplier;
+    # Minutes
+    $multiplier = 60;
+    my $minutes = int ($remainder / $multiplier); $remainder %= $multiplier;
+    # Seconds
+    my $seconds = $remainder;
+
+    if ($years > 0 ) {
+        $res .= sprintf "%dy ", $years;
         $zeroc = 1;
     }
-    if ($dur->months > 0 || $zeroc) {
-        $res .= sprintf "%dmo ", $dur->months;
+    if ($months > 0 || $zeroc) {
+        $res .= sprintf "%dmo ", $months;
         $zeroc = 1;
     }
-    if ($dur->weeks > 0 || $zeroc) {
-        $res .= sprintf "%dw ", $dur->weeks;
+    if ($weeks > 0 || $zeroc) {
+        $res .= sprintf "%dw ", $weeks;
         $zeroc = 1;
     }
-    if ($dur->days > 0 || $zeroc) {
-        $res .= sprintf "%dd ", $dur->days;
+    if ($days > 0 || $zeroc) {
+        $res .= sprintf "%dd ", $days;
         $zeroc = 1;
     }
-    if ($dur->hours > 0 || $zeroc) {
-        $res .= sprintf "%dh ", $dur->hours;
+    if ($hours > 0 || $zeroc) {
+        $res .= sprintf "%dh ", $hours;
         $zeroc = 1;
     }
-    if ($dur->minutes > 0 || $zeroc) {
-        $res .= sprintf "%dm ", $dur->minutes;
+    if ($minutes > 0 || $zeroc) {
+        $res .= sprintf "%dm ", $minutes;
         $zeroc = 1;
     }
-    $res .= sprintf "%ds", $dur->seconds;
+    $res .= sprintf "%ds", $seconds;
     return $res;
 }
 
